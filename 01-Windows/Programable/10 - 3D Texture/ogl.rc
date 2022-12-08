@@ -1,0 +1,5 @@
+#include "ogl.h"
+
+ASMICON ICON "ASMIcon.ico"
+ASM_STONE_BITMAP BITMAP "Stone.bmp"
+ASM_KUNDALI_BITMAP BITMAP "Vijay_Kundali.bmp"
