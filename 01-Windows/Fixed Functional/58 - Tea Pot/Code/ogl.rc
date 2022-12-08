@@ -1,0 +1,4 @@
+#include "ogl.h"
+
+ASMICON ICON "ASMIcon.ico"
+ASM_MARBLE_BITMAP BITMAP "marble.bmp"
