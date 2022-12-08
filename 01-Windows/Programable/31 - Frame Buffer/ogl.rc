@@ -1,0 +1,4 @@
+#include "ogl.h"
+
+ASMICON ICON "ASMIcon.ico"
+
