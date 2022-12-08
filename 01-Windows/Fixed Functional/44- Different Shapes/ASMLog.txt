@@ -1,0 +1,2 @@
+Log Opened Programm started Succssfully !!!!!
+Log Closed Program closed Succssfully !!!!!
