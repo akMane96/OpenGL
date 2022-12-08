@@ -1,0 +1,4 @@
+#include "ogl.h"
+
+ASMICON ICON "ASMIcon.ico"
+ASM_SMILEY_BITMAP BITMAP "Smiley.bmp"

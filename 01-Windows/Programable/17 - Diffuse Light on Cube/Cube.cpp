@@ -1,0 +1,874 @@
+//header files
+#include <windows.h>
+#include<stdio.h>
+
+#include<gl/glew.h>
+#include <gl/gl.h>
+
+#include "icon.h"
+#include "vmath.h"
+
+//Macros
+#define  ASM_WIN_WIDTH 800
+#define ASM_WIN_HEIGHT 600
+
+using namespace vmath;
+
+//Pragma
+#pragma comment(lib, "user32.lib")
+#pragma comment(lib, "gdi32.lib")
+#pragma comment(lib, "glew32.lib")
+#pragma comment(lib, "opengl32.lib")
+
+enum
+{
+	ASM_ATTRIBUTE_POSITION = 0,
+	ASM_ATTRIBUTE_COLOR,
+	ASM_ATTRIBUTE_NORMAL,
+	ASM_ATTRIBUTE_TEXTURECOORD,
+
+};
+
+
+//Global Function Declaration
+LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
+
+//Global Variable Declaration
+DWORD ASM_dwStyle;
+WINDOWPLACEMENT ASM_wpPrev = { sizeof(WINDOWPLACEMENT) };
+HWND ASM_ghwnd = NULL;
+HDC ASM_ghdc = NULL;
+HGLRC ASM_ghrc;
+bool ASM_gbFullScreen = false;
+bool ASM_gbActiveWindow = false;
+FILE *ASM_gpFile = NULL;
+
+GLuint ASM_vertexShaderObject;
+GLuint ASM_fragmentShaderObject;
+GLuint ASM_shaderProgramObject;
+
+
+GLuint ASM_vao_Cube;
+GLuint ASM_vbo_CubePosition;
+GLuint ASM_vbo_CubeNormal;
+
+GLuint ASM_mVMatrixUniform;
+GLuint ASM_perspectiveMatrixUniform;
+GLuint ASM_lKeyPressedUniform;
+GLuint ASM_lDUniform;
+GLuint ASM_kDUinform;
+GLuint ASM_lightPositionUniform;
+
+bool ASM_bAnimates;
+bool ASM_bLight;
+
+mat4 ASM_perspectiveProjectionMatrix;
+
+GLfloat ASM_CubeAngle;
+
+
+//Win MAin
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdLine, int iCmdShow)
+{
+	//Local Function Declaration
+	void Display();
+	void Initialize();
+	void ToggleFullScreen();
+
+	//Local Variable Declaration
+	WNDCLASSEX ASM_wndclass;
+	HWND ASM_hwnd;
+	MSG ASM_msg;
+	TCHAR ASM_szAppName[] = TEXT("ASM Window");
+	bool ASM_iDone = false;
+	
+	//code
+
+	if (fopen_s(&ASM_gpFile, "ASMLog.txt", "w") != 0)
+	{
+		MessageBox(NULL, TEXT("Cant Create Log File"), TEXT("ERROR"), MB_OK | MB_ICONWARNING);
+		exit(0);
+	}
+	else
+	{
+		fprintf(ASM_gpFile, "Log Opened Programm started Succssfully !!!!!\n");
+	}
+
+	//Fill WNDCLASSEX struct
+	ASM_wndclass.cbSize = sizeof(WNDCLASSEX);
+	ASM_wndclass.cbClsExtra = 0;
+	ASM_wndclass.cbWndExtra = 0;
+	ASM_wndclass.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
+
+	ASM_wndclass.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(ASMICON));
+	ASM_wndclass.hIconSm = LoadIcon(hInstance, MAKEINTRESOURCE(ASMICON));
+	ASM_wndclass.hCursor = LoadCursor(NULL, IDC_ARROW);
+	ASM_wndclass.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+	ASM_wndclass.hInstance = hInstance;
+
+
+	ASM_wndclass.lpszClassName = ASM_szAppName;
+	ASM_wndclass.lpszMenuName = NULL;
+	ASM_wndclass.lpfnWndProc = WndProc;
+
+
+	//Register Class to OS
+	RegisterClassEx(&ASM_wndclass);
+
+	
+	//Create Window
+	ASM_hwnd = CreateWindowEx(WS_EX_APPWINDOW,
+		ASM_szAppName,
+		TEXT("Two 2D Shapes Animation"),
+		WS_OVERLAPPEDWINDOW,
+		(GetSystemMetrics(SM_CXSCREEN) / 2) - (ASM_WIN_WIDTH / 2),
+		(GetSystemMetrics(SM_CYSCREEN) / 2) - (ASM_WIN_HEIGHT / 2),
+		ASM_WIN_WIDTH,
+		ASM_WIN_HEIGHT,
+		NULL,
+		NULL,
+		hInstance,
+		NULL
+	);
+
+	ASM_ghwnd = ASM_hwnd;
+
+	//Intialize
+	Initialize();
+
+	//Fullscreen on start
+	ToggleFullScreen();
+
+	//Show Window
+	ShowWindow(ASM_hwnd, iCmdShow);
+
+	//Set Focus
+	SetForegroundWindow(ASM_hwnd);
+	SetFocus(ASM_ghwnd);	
+
+	//Game Loop
+
+	while (ASM_iDone == false)
+	{
+		if (PeekMessage(&ASM_msg, NULL, 0, 0, PM_REMOVE))
+		{
+			if (ASM_msg.message == WM_QUIT)
+			{
+				ASM_iDone = true;
+			}
+			else
+			{
+				TranslateMessage(&ASM_msg);
+				DispatchMessage(&ASM_msg);
+			}
+		}
+		else
+		{
+			if (ASM_gbActiveWindow == true)
+			{
+				Display();
+			}
+		}
+	}
+
+	return((int)ASM_msg.wParam);
+}
+
+
+LRESULT CALLBACK WndProc(HWND hwnd, UINT iMsg, WPARAM wParam, LPARAM lParam)
+{
+	//Local Fuction Declaration
+	void ToggleFullScreen();
+	void Resize(int, int);
+	void UnInitialize();
+	
+	switch (iMsg)
+	{
+		case WM_SETFOCUS:
+			ASM_gbActiveWindow = true;
+			break;
+
+		case WM_KILLFOCUS:
+			ASM_gbActiveWindow = false;
+			break;
+
+		case WM_ERASEBKGND:
+			return(0);
+
+		case WM_SIZE:
+			Resize(LOWORD(lParam), HIWORD(lParam));
+			break;
+
+		case WM_KEYDOWN:
+
+			switch(wParam)
+			{
+				case VK_ESCAPE:
+					DestroyWindow(ASM_ghwnd);
+					break;
+
+				case 0x46:
+				case 0x66:
+					ToggleFullScreen();
+					break;
+
+				default:
+					break;
+			}
+
+			break;
+
+		case WM_CHAR:
+			switch (wParam)
+			{
+
+				case 'l':
+				case 'L':
+					if (ASM_bLight == false)
+					{
+						ASM_bLight = true;
+						glEnable(GL_LIGHTING);
+					}
+					else
+					{
+						ASM_bLight = false;
+						glDisable(GL_LIGHTING);
+					}
+
+					break;
+
+				case 'a':
+				case 'A':
+					if (ASM_bAnimates == false)
+					{
+						ASM_bAnimates = true;
+						
+					}
+					else
+					{
+						ASM_bAnimates = false;						
+					}
+
+					break;
+			}
+
+			break;
+
+		case WM_CLOSE:
+			DestroyWindow(ASM_ghwnd);
+			break;
+
+		case WM_DESTROY:
+			UnInitialize();
+			PostQuitMessage(0);
+			break;
+	}
+
+	return(DefWindowProc(hwnd, iMsg, wParam, lParam));
+}
+
+void ToggleFullScreen()
+{
+	MONITORINFO ASM_mi = {sizeof(MONITORINFO)};
+
+	if (ASM_gbFullScreen == false)
+	{
+
+		ASM_dwStyle = GetWindowLong(ASM_ghwnd, GWL_STYLE);
+
+		if (ASM_dwStyle & WS_OVERLAPPEDWINDOW)
+		{
+			if (GetWindowPlacement(ASM_ghwnd, &ASM_wpPrev) &&
+				GetMonitorInfo(MonitorFromWindow(ASM_ghwnd, MONITORINFOF_PRIMARY), &ASM_mi))
+			{
+				SetWindowLong(ASM_ghwnd, GWL_STYLE, (ASM_dwStyle & ~WS_OVERLAPPEDWINDOW));
+
+				SetWindowPos(ASM_ghwnd,
+					HWND_TOP,
+					ASM_mi.rcMonitor.left,
+					ASM_mi.rcMonitor.top,
+					(ASM_mi.rcMonitor.right - ASM_mi.rcMonitor.left),
+					(ASM_mi.rcMonitor.bottom - ASM_mi.rcMonitor.top),
+					SWP_NOZORDER | SWP_FRAMECHANGED
+				);
+
+				ShowCursor(FALSE);
+				ASM_gbFullScreen = true;
+			}
+
+
+		}
+	}
+		else
+		{
+			SetWindowLong(ASM_ghwnd, GWL_STYLE, ASM_dwStyle | WS_OVERLAPPEDWINDOW);
+
+			SetWindowPlacement(ASM_ghwnd, &ASM_wpPrev);
+
+			SetWindowPos(ASM_ghwnd,
+				HWND_TOP,
+				0,
+				0,
+				0,
+				0, SWP_NOZORDER | SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOOWNERZORDER
+				);
+
+			ShowCursor(TRUE);
+			ASM_gbFullScreen = false;
+		}
+}
+
+void Initialize()
+{
+	//Local Function Declaration
+	void Resize(int, int);
+
+	//Local variable Declaration
+	PIXELFORMATDESCRIPTOR ASM_pfd;
+	int ASM_iPixelFormatIndex ;
+
+	//code
+
+	ASM_ghdc = GetDC(ASM_ghwnd);
+
+	ZeroMemory(&ASM_pfd, sizeof(PIXELFORMATDESCRIPTOR));
+
+	ASM_pfd.nSize = sizeof(PIXELFORMATDESCRIPTOR);
+	ASM_pfd.nVersion = 1;
+	ASM_pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+	ASM_pfd.iPixelType = PFD_TYPE_RGBA;
+	ASM_pfd.cColorBits = 32;
+	ASM_pfd.cRedBits = 8;
+	ASM_pfd.cGreenBits = 8;
+	ASM_pfd.cBlueBits = 8;
+	ASM_pfd.cAlphaBits = 8;
+	ASM_pfd.cDepthBits = 32;
+
+	ASM_iPixelFormatIndex = ChoosePixelFormat(ASM_ghdc, &ASM_pfd);
+
+	if (ASM_iPixelFormatIndex == 0)
+	{
+		fprintf(ASM_gpFile, "ChoosePixelFormat() Failed !!!!!\n");
+		DestroyWindow(ASM_ghwnd);
+	}
+
+	if (SetPixelFormat(ASM_ghdc, ASM_iPixelFormatIndex, &ASM_pfd) == FALSE)
+	{
+		fprintf(ASM_gpFile, "SetPixelFormat() Failed !!!!!\n");
+		DestroyWindow(ASM_ghwnd);
+	}
+
+	ASM_ghrc = wglCreateContext(ASM_ghdc);
+
+	if (ASM_ghrc == NULL)
+	{
+		fprintf(ASM_gpFile, "wglCreateContext() Failed !!!!!\n");
+		DestroyWindow(ASM_ghwnd);
+	}
+
+	if (wglMakeCurrent(ASM_ghdc, ASM_ghrc) == FALSE)
+	{
+		fprintf(ASM_gpFile, "wglMakeCurrent() Failed !!!!!\n");
+		DestroyWindow(ASM_ghwnd);
+	}
+
+	GLenum ASM_glew_error = glewInit();
+
+	if (ASM_glew_error != GLEW_OK)
+	{
+		fprintf(ASM_gpFile, "glewInit(): Failed !!!!!\n");
+		DestroyWindow(ASM_ghwnd);
+
+	}
+
+
+	////-----------------------------Vertex Shader
+
+	//Create Shader
+	ASM_vertexShaderObject = glCreateShader(GL_VERTEX_SHADER);
+
+	//provide source code
+
+	const GLchar *ASM_vertexShaderSourceCode = 
+		"#version 450 core" \
+		"\n" \
+		"in vec4 ASM_vPosition;" \
+		"in vec3 ASM_vNormal;" \
+		"uniform mat4 ASM_u_mVMatrix;" \
+		"uniform mat4 ASM_u_perspectiveMatrix;" \
+		"uniform int ASM_u_lKeyPressed;" \
+		"uniform vec3 ASM_u_lD;" \
+		"uniform vec3 ASM_u_kD;" \
+		"uniform vec4 ASM_u_lightPosition;" \
+		"out vec3 ASM_diffuse_light;" \
+		"void main(void)" \
+		"{" \
+			"if(ASM_u_lKeyPressed == 1)" \
+			"{" \
+				"vec4 ASM_eye_coordinates =  ASM_u_mVMatrix *  ASM_vPosition;" \
+				"mat3 ASM_normal_matrix = mat3(transpose(inverse(ASM_u_mVMatrix))); " \
+				"vec3 ASM_tNormal = normalize(ASM_normal_matrix * ASM_vNormal);  " \
+				"vec3 ASM_source = normalize(vec3(ASM_u_lightPosition - ASM_eye_coordinates));" \
+				"ASM_diffuse_light = ASM_u_lD * ASM_u_kD*max(dot(ASM_source, ASM_tNormal), 0.0);" \
+			"}" \
+			"gl_Position = ASM_u_perspectiveMatrix * ASM_u_mVMatrix * ASM_vPosition;"
+		"}"; 
+
+	glShaderSource(ASM_vertexShaderObject, 1, (const GLchar **)&ASM_vertexShaderSourceCode, NULL);
+
+		//compile Shader
+	glCompileShader(ASM_vertexShaderObject);
+
+	GLint ASM_iInfoLogLength = 0;
+	GLint ASM_iShaderCompliedStatus = 0;
+	char* ASM_szInfoLog = NULL;
+
+	glGetShaderiv(ASM_vertexShaderObject, GL_COMPILE_STATUS, &ASM_iShaderCompliedStatus);
+	
+	if (ASM_iShaderCompliedStatus == GL_FALSE)
+	{
+		glGetShaderiv(ASM_vertexShaderObject, GL_INFO_LOG_LENGTH, &ASM_iInfoLogLength);
+
+		if (ASM_iInfoLogLength > 0)
+		{
+			ASM_szInfoLog = (char*)malloc(sizeof(char)* ASM_iInfoLogLength);
+			if (ASM_szInfoLog != NULL)
+			{
+				GLsizei ASM_written;
+				glGetShaderInfoLog(ASM_vertexShaderObject, ASM_iInfoLogLength, &ASM_written, ASM_szInfoLog);
+				fprintf(ASM_gpFile, "Vertex Shader Compilation Log : %s\n", ASM_szInfoLog);
+				free(ASM_szInfoLog);
+				DestroyWindow(ASM_ghwnd);
+			}
+
+		}
+
+	}
+		////-----------------------------Fragment Shader
+
+	ASM_fragmentShaderObject = glCreateShader(GL_FRAGMENT_SHADER);
+
+	const GLchar *ASM_fragmentShaderSourceCode = 
+		"#version 450 core" \
+		"\n" \
+		"in vec3 ASM_diffuse_light;" \
+		"uniform int ASM_u_lKeyPressed;" \
+		"out vec4 ASM_fragColor;" \
+		"void main(void)" \
+		"{" \
+			"vec4 ASM_color;"
+			"if(ASM_u_lKeyPressed == 1)" \
+			"{" \
+				"ASM_color = vec4(ASM_diffuse_light, 1.0f);" \
+			"} else" \
+			"{" \
+					"ASM_color = vec4(1.0f, 1.0f, 1.0f, 1.0f);" \
+			"}" \
+			"ASM_fragColor = ASM_color;" \
+		"}";
+
+
+	glShaderSource(ASM_fragmentShaderObject, 1, (const GLchar **)&ASM_fragmentShaderSourceCode,NULL);
+
+	glCompileShader(ASM_fragmentShaderObject);
+
+	ASM_iInfoLogLength = 0;
+	ASM_iShaderCompliedStatus = 0;
+	ASM_szInfoLog = NULL;
+
+	glGetShaderiv(ASM_fragmentShaderObject, GL_COMPILE_STATUS, &ASM_iShaderCompliedStatus);
+
+	if (ASM_iShaderCompliedStatus == GL_FALSE)
+	{
+		glGetShaderiv(ASM_fragmentShaderObject, GL_INFO_LOG_LENGTH, &ASM_iInfoLogLength);
+
+		if (ASM_iInfoLogLength > 0)
+		{
+			ASM_szInfoLog = (char*)malloc(sizeof(char) * ASM_iInfoLogLength);
+			if (ASM_szInfoLog != NULL)
+			{
+				GLsizei ASM_written;
+				glGetShaderInfoLog(ASM_fragmentShaderObject, ASM_iInfoLogLength, &ASM_written, ASM_szInfoLog);
+				fprintf(ASM_gpFile, "Fragment Shader Compilation Log : %s\n", ASM_szInfoLog);
+				free(ASM_szInfoLog);
+				DestroyWindow(ASM_ghwnd);
+			}
+
+		}
+
+	}
+
+	// -------------------------- Shader Program
+
+	ASM_shaderProgramObject = glCreateProgram();
+
+	glAttachShader(ASM_shaderProgramObject, ASM_vertexShaderObject);
+
+	glAttachShader(ASM_shaderProgramObject, ASM_fragmentShaderObject);
+
+	glBindAttribLocation(ASM_shaderProgramObject, ASM_ATTRIBUTE_POSITION, "ASM_vPosition");
+	glBindAttribLocation(ASM_shaderProgramObject, ASM_ATTRIBUTE_NORMAL, "ASM_vNormal");
+	
+
+	glLinkProgram(ASM_shaderProgramObject);
+
+	ASM_iInfoLogLength = 0;
+	ASM_szInfoLog = NULL;
+	GLint ASM_iShaderProgramLinkStatus = 0;
+
+	glGetShaderiv(ASM_shaderProgramObject, GL_LINK_STATUS, &ASM_iShaderProgramLinkStatus);
+
+	if (ASM_iShaderProgramLinkStatus == GL_FALSE)
+	{
+		glGetShaderiv(ASM_shaderProgramObject, GL_INFO_LOG_LENGTH, &ASM_iInfoLogLength);
+
+		if (ASM_iInfoLogLength > 0)
+		{
+			ASM_szInfoLog = (char*)malloc(sizeof(char) * ASM_iInfoLogLength);
+			if (ASM_szInfoLog != NULL)
+			{
+				GLsizei ASM_written;
+				glGetShaderInfoLog(ASM_shaderProgramObject, ASM_iInfoLogLength, &ASM_written, ASM_szInfoLog);
+				fprintf(ASM_gpFile, "Shader Program Link Log : %s\n", ASM_szInfoLog);
+				free(ASM_szInfoLog);
+				DestroyWindow(ASM_ghwnd);
+			}
+
+		}
+
+	}
+
+	ASM_mVMatrixUniform = glGetUniformLocation(ASM_shaderProgramObject, "ASM_u_mVMatrix");
+	ASM_perspectiveMatrixUniform = glGetUniformLocation(ASM_shaderProgramObject, "ASM_u_perspectiveMatrix");
+	ASM_lKeyPressedUniform = glGetUniformLocation(ASM_shaderProgramObject, "ASM_u_lKeyPressed");
+	ASM_lDUniform = glGetUniformLocation(ASM_shaderProgramObject, "ASM_u_lD");
+	ASM_kDUinform = glGetUniformLocation(ASM_shaderProgramObject, "ASM_u_kD");
+	ASM_lightPositionUniform = glGetUniformLocation(ASM_shaderProgramObject, "ASM_u_lightPosition");
+
+
+	const GLfloat ASM_cubeVertices[] = {
+		1.0f, 1.0f, 1.0f,
+		-1.0f, 1.0f, 1.0f,
+		-1.0f, -1.0f, 1.0f,
+		1.0f, -1.0f, 1.0f,
+
+		1.0f, 1.0f, -1.0f,
+		1.0f, 1.0f, 1.0f,
+		1.0f, -1.0f, 1.0f,
+		1.0f, -1.0f, -1.0f,
+
+		-1.0f, 1.0f, -1.0f,
+		1.0f, 1.0f, -1.0f,
+		1.0f, -1.0f, -1.0f,
+		-1.0f, -1.0f, -1.0f,
+
+		-1.0f, 1.0f, 1.0f,
+		-1.0f, 1.0f, -1.0f,
+		-1.0f, -1.0f, -1.0f,
+		-1.0f, -1.0f, 1.0f,
+
+		1.0f, 1.0f, -1.0f,
+		-1.0f, 1.0f, -1.0f,
+		-1.0f, 1.0f, 1.0f,
+		1.0f, 1.0f, 1.0f,
+
+		-1.0f, -1.0f, 1.0f,
+		1.0f, -1.0f, 1.0f,
+		1.0f, -1.0f, -1.0f,
+		-1.0f, -1.0f, -1.0f
+	};
+
+	const GLfloat ASM_cubeNormals[] = {
+		0.0f, 0.0f, 1.0f,
+		0.0f, 0.0f, 1.0f,
+		0.0f, 0.0f, 1.0f,
+		0.0f, 0.0f, 1.0f,
+
+		1.0f, 0.0f, 0.0f,
+		1.0f, 0.0f, 0.0f,
+		1.0f, 0.0f, 0.0f,
+		1.0f, 0.0f, 0.0f,
+
+		0.0f, 0.0f, -1.0f,
+		0.0f, 0.0f, -1.0f,
+		0.0f, 0.0f, -1.0f,
+		0.0f, 0.0f, -1.0f,
+
+		-1.0f, 0.0f, 0.0f,
+		-1.0f, 0.0f, 0.0f,
+		-1.0f, 0.0f, 0.0f,
+		-1.0f, 0.0f, 0.0f,
+
+		0.0f, 1.0f, 0.0f,
+		0.0f, 1.0f, 0.0f,
+		0.0f, 1.0f, 0.0f,
+		0.0f, 1.0f, 0.0f,
+
+		0.0f, -1.0f, 0.0f,
+		0.0f, -1.0f, 0.0f,
+		0.0f, -1.0f, 0.0f,
+		0.0f, -1.0f, 0.0f
+
+
+	};
+
+		
+	glGenVertexArrays(1, &ASM_vao_Cube);
+	glBindVertexArray(ASM_vao_Cube);
+		
+		glGenBuffers(1, &ASM_vbo_CubePosition);
+		glBindBuffer(GL_ARRAY_BUFFER, ASM_vbo_CubePosition);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(ASM_cubeVertices), ASM_cubeVertices, GL_STATIC_DRAW);
+
+		glVertexAttribPointer(ASM_ATTRIBUTE_POSITION, 3, GL_FLOAT, GL_FALSE, 0, NULL);
+		glEnableVertexAttribArray(ASM_ATTRIBUTE_POSITION);
+
+		glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+		glGenBuffers(1, &ASM_vbo_CubeNormal);
+		glBindBuffer(GL_ARRAY_BUFFER, ASM_vbo_CubeNormal);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(ASM_cubeNormals), ASM_cubeNormals, GL_STATIC_DRAW);
+
+		glVertexAttribPointer(ASM_ATTRIBUTE_NORMAL, 3, GL_FLOAT, GL_FALSE, 0, NULL);
+		glEnableVertexAttribArray(ASM_ATTRIBUTE_NORMAL);
+
+		glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+	
+	glBindVertexArray(0);
+
+	//Depth
+	glClearDepth(1.0f);
+	glEnable(GL_DEPTH_TEST);
+	glDepthFunc(GL_LEQUAL);
+
+	ASM_perspectiveProjectionMatrix = mat4::identity();
+	ASM_bAnimates = false;
+	ASM_bLight = false;
+
+	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+
+
+	// Graphic Library Shading Language
+///// OpenGL Related Log
+	fprintf(ASM_gpFile, "\n------------------- OpenGL Related Log ---------------------\n\n");
+	fprintf(ASM_gpFile, "OpenGL Vendor : %s\n\n", glGetString(GL_VENDOR));
+	fprintf(ASM_gpFile, "OpenGL Renderer : %s\n\n", glGetString(GL_RENDERER));
+	fprintf(ASM_gpFile, "OpenGL Version : %s\n\n", glGetString(GL_VERSION));
+	fprintf(ASM_gpFile, "GLSL Version : %s\n\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
+
+	//OpenGL Enabled Extension
+	fprintf(ASM_gpFile, "\n------------------- OpenGL Enabled Extension ---------------------\n\n");
+
+	GLint ASM_numExt;
+
+	glGetIntegerv(GL_NUM_EXTENSIONS, &ASM_numExt);
+
+	for (int ASM_i = 0; ASM_i < ASM_numExt; ASM_i++)
+	{
+		fprintf(ASM_gpFile, "%s\n", glGetStringi(GL_EXTENSIONS, ASM_i));
+	}
+
+	fprintf(ASM_gpFile, "\n\n------------------------------------------------------\n\n");
+
+	
+
+
+	//Warm Up Resize
+	Resize(ASM_WIN_WIDTH, ASM_WIN_HEIGHT);
+	
+}
+
+
+void Resize(int width, int height)
+{
+	//code
+	if (height <= 0)
+		height = 1;
+
+	glViewport(0, 0, (GLsizei)width, (GLsizei)height);	
+
+	ASM_perspectiveProjectionMatrix = perspective(45.0f, (GLfloat)width/ (GLfloat)height, 0.1f, 100.0f);
+
+}
+
+void Display()
+{
+
+	GLfloat ASM_lightPosition[] = { 0.0f, 0.0f, 2.0f, 1.0f };
+	void Update();
+
+	//code
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	glUseProgram(ASM_shaderProgramObject);
+
+		mat4 ASM_translateMatrix = mat4::identity();
+		mat4 ASM_XrotationMatrix = mat4::identity();
+		mat4 ASM_YrotationMatrix = mat4::identity();
+		mat4 ASM_ZrotationMatrix = mat4::identity();
+		mat4 ASM_modelViewMatrix = mat4::identity();
+		mat4 ASM_modelViewProjectMatrix = mat4::identity();
+
+		if (ASM_bLight == true)
+		{
+			glUniform1i(ASM_lKeyPressedUniform, 1);
+			glUniform3f(ASM_lDUniform, 1.0f, 1.0f, 1.0f);
+			glUniform3f(ASM_kDUinform, 0.5f, 0.5f, 0.5f);
+			glUniform4fv(ASM_lightPositionUniform, 1, ASM_lightPosition);
+		}
+		else
+		{
+			glUniform1i(ASM_lKeyPressedUniform, 0);
+		}
+
+		ASM_translateMatrix = translate(0.0f, 0.0f, -6.0f);
+		ASM_XrotationMatrix = rotate(ASM_CubeAngle, 1.0f, 0.0f, 0.0f);
+		ASM_YrotationMatrix = rotate(ASM_CubeAngle, 0.0f, 1.0f, 0.0f);
+		ASM_ZrotationMatrix = rotate(ASM_CubeAngle, 0.0f, 0.0f, 1.0f);
+
+		ASM_modelViewMatrix = ASM_translateMatrix* ASM_XrotationMatrix * ASM_YrotationMatrix * ASM_ZrotationMatrix;
+
+		glUniformMatrix4fv(ASM_mVMatrixUniform, 1, GL_FALSE, ASM_modelViewMatrix);
+		glUniformMatrix4fv(ASM_perspectiveMatrixUniform, 1, GL_FALSE, ASM_perspectiveProjectionMatrix);
+
+		
+		glBindVertexArray(ASM_vao_Cube);
+
+			glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+			glDrawArrays(GL_TRIANGLE_FAN, 4, 4);
+			glDrawArrays(GL_TRIANGLE_FAN, 8, 4);
+			glDrawArrays(GL_TRIANGLE_FAN, 12, 4);
+			glDrawArrays(GL_TRIANGLE_FAN, 16, 4);
+			glDrawArrays(GL_TRIANGLE_FAN, 20, 4);
+
+
+		glBindVertexArray(0);
+
+	glUseProgram(0);
+
+	if(ASM_bAnimates == true)
+		Update();
+	
+	SwapBuffers(ASM_ghdc);
+
+}
+
+void Update()
+{
+	ASM_CubeAngle = ASM_CubeAngle + 1.0f;
+
+	if (ASM_CubeAngle >= 360.0f)
+	{
+		ASM_CubeAngle = 0.0f;
+	}
+
+}
+
+void UnInitialize()
+{
+
+	if(ASM_gbFullScreen == true)
+	{
+		SetWindowLong(ASM_ghwnd, GWL_STYLE, ASM_dwStyle | WS_OVERLAPPEDWINDOW);
+
+		SetWindowPlacement(ASM_ghwnd, &ASM_wpPrev);
+
+		SetWindowPos(ASM_ghwnd,
+			HWND_TOP,
+			0,
+			0,
+			0,
+			0, SWP_NOZORDER | SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOOWNERZORDER
+		);
+
+		ShowCursor(TRUE);
+		ASM_gbFullScreen = false;
+
+	}
+
+	if (ASM_vao_Cube)
+	{
+		glDeleteVertexArrays(1, &ASM_vao_Cube);
+		ASM_vao_Cube = 0;
+	}
+
+	if (ASM_vbo_CubePosition)
+	{
+		glDeleteBuffers(1, &ASM_vbo_CubePosition);
+		ASM_vbo_CubePosition = 0;
+	}
+
+	if (ASM_vbo_CubeNormal)
+	{
+		glDeleteBuffers(1, &ASM_vbo_CubeNormal);
+		ASM_vbo_CubeNormal = 0;
+	}
+
+
+	////--------------------------------- Safe Shader Cleanup
+	if(ASM_shaderProgramObject)
+	{
+
+		glUseProgram(ASM_shaderProgramObject);
+
+		GLsizei ASM_shaderCount;
+
+		glGetProgramiv(ASM_shaderProgramObject, GL_ATTACHED_SHADERS, &ASM_shaderCount);
+
+		GLuint * ASM_pShaders = NULL;
+
+		ASM_pShaders = (GLuint *)malloc(ASM_shaderCount*sizeof(GLuint));
+
+		if(ASM_pShaders == NULL)
+		{
+			fprintf(ASM_gpFile, "Memory Allocation Failed !!!!!\n");
+			exit(0);
+
+		}
+
+		glGetAttachedShaders(ASM_shaderProgramObject, ASM_shaderCount,&ASM_shaderCount, ASM_pShaders);
+
+		for(GLsizei ASM_i = 0; ASM_i < ASM_shaderCount; ASM_i++)
+		{
+
+			glDetachShader(ASM_shaderProgramObject, ASM_pShaders[ASM_i]);
+			glDeleteShader(ASM_pShaders[ASM_i]);
+			ASM_pShaders[ASM_i] = 0;
+
+		}
+
+		free(ASM_pShaders);
+		ASM_pShaders = NULL;
+
+		glDeleteProgram(ASM_shaderProgramObject);
+		ASM_shaderProgramObject = 0;
+
+		glUseProgram(0);
+
+	}
+
+	if (wglGetCurrentContext() == ASM_ghrc)
+	{
+		wglMakeCurrent(NULL, NULL);
+	}
+
+	if (ASM_ghrc)
+	{
+		wglDeleteContext(ASM_ghrc);
+		ASM_ghrc = NULL;
+	}
+
+	if (ASM_ghdc)
+	{
+		ReleaseDC(ASM_ghwnd, ASM_ghdc);
+		ASM_ghdc = NULL;
+	}
+
+	if (ASM_gpFile)
+	{
+		fprintf(ASM_gpFile, "Log Closed Program closed Succssfully !!!!!\n");
+		fclose(ASM_gpFile);
+		ASM_gpFile = NULL;
+	}
+}
