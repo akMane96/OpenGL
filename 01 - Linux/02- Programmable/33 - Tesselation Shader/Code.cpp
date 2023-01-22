@@ -1,0 +1,908 @@
+#include<iostream>
+#include<stdio.h>
+#include <stdlib.h>
+#include<memory.h>
+
+
+#include<X11/Xlib.h>
+#include<X11/Xutil.h>
+#include<X11/XKBlib.h>
+#include<X11/keysym.h>
+
+#include<GL/glew.h>
+#include<GL/gl.h>
+#include<GL/glx.h>
+
+#include "vmath.h"
+#include<SOIL/SOIL.h>
+
+using namespace vmath;
+using namespace std;
+
+enum
+{
+	ASM_ATTRIBUTE_POSITION = 0,
+	ASM_ATTRIBUTE_COLOR,
+	ASM_ATTRIBUTE_NORMAL,
+	ASM_ATTRIBUTE_TEXTURECOORD,
+
+};
+
+
+using namespace std;
+
+bool ASM_bFullScreen = false;
+Display *ASM_gpDisplay = NULL;
+XVisualInfo *ASM_gpVisualInfo = NULL;
+Colormap ASM_gColormap;
+Window ASM_gWindow;
+int ASM_gWindowWidth = 800;
+int ASM_giWindowHeight = 600;
+GLfloat ASM_angle;
+FILE * ASM_gpFile = NULL;
+
+/////---------------------------------------Context Varaibles
+GLXContext ASM_gGLXContext;
+
+typedef GLXContext (* glXCreateContextAttribsARBProc)(Display *, GLXFBConfig, GLXContext, Bool, const int *);
+glXCreateContextAttribsARBProc ASM_glXCreateContextAttribsARB = NULL;
+GLXFBConfig ASM_gGLXFBConfig;
+
+/////---------------------------------------_Shader Varaibles
+
+GLuint ASM_vertexShaderObject;
+GLuint ASM_tesselationControlShaderObject;
+GLuint ASM_tesselationEvaluationShaderObject;
+GLuint ASM_fragmentShaderObject;
+GLuint ASM_shaderProgramObject;
+
+GLuint ASM_vao;
+GLuint ASM_vbo;
+GLuint ASM_mvpUniform;
+GLuint ASM_numberOfSegmentsUniform;
+GLuint ASM_numberOfStripsUniform;
+GLuint ASM_lineColorUniform;
+
+int ASM_uiNumberOfSegmentObject;
+mat4 ASM_perspectiveProjectionMatrix;
+
+int main(void)
+{
+
+	void CreateWindow();
+	void ToggleFullScreen();
+	void Uninitialize();
+	void Initialize();
+	void Resize(int, int);
+	void Render();
+	
+	
+	int ASM_winWidth = ASM_gWindowWidth;
+	int ASM_winHeight =  ASM_giWindowHeight;
+	
+	bool ASM_bDone = false;
+	
+	
+	/////----------------------File
+	
+	ASM_gpFile = fopen("ASMLog.txt", "w");
+	
+	if(ASM_gpFile != NULL)
+	{
+		fprintf(ASM_gpFile, "Program Execution Started Succesfully\n\n");
+			
+	} else
+	{
+		exit(0);
+	
+	}
+	
+	
+	CreateWindow();
+	Initialize();
+	ToggleFullScreen();
+	
+	XEvent ASM_event;
+	KeySym ASM_keysym;
+	
+	while(ASM_bDone == false)
+	{
+		while(XPending(ASM_gpDisplay))
+		{
+			XNextEvent(ASM_gpDisplay, &ASM_event);
+			
+			switch(ASM_event.type)
+			
+			{
+				case MapNotify:
+					break;
+					
+				case KeyPress:
+					ASM_keysym = XkbKeycodeToKeysym(ASM_gpDisplay,ASM_event.xkey.keycode,0,0);
+					switch(ASM_keysym)
+					{
+						case XK_Escape:
+							ASM_bDone = true;
+						case XK_f:
+						case XK_F:
+							if(ASM_bFullScreen == false)
+							{
+								ToggleFullScreen();
+								ASM_bFullScreen = true;
+															
+							}
+							else
+							{
+								ToggleFullScreen();
+								ASM_bFullScreen = false;
+							}
+							
+							break;
+
+						case XK_Up:
+							ASM_uiNumberOfSegmentObject++;
+							if(ASM_uiNumberOfSegmentObject > 30)
+							{
+								ASM_uiNumberOfSegmentObject = 30;
+							}
+							break;
+
+						case XK_Down:
+							ASM_uiNumberOfSegmentObject--;
+							if(ASM_uiNumberOfSegmentObject < 1)
+							{
+								ASM_uiNumberOfSegmentObject = 1;
+							}
+							break;
+							
+						default:
+							break;
+					}
+					
+					break;
+					
+				case ButtonPress:
+					switch(ASM_event.xbutton.button)
+					{
+						case 1:
+							break;
+						case 2:
+							break;
+						case 3:
+							break;
+						default:
+							break;
+					}
+					break;
+					
+				case ConfigureNotify:
+					ASM_winWidth = ASM_event.xconfigure.width;
+					ASM_winHeight = ASM_event.xconfigure.height;
+					Resize(ASM_winWidth, ASM_winHeight);
+					break;
+				
+				case Expose:
+					break;
+					
+				case DestroyNotify:
+					break;
+					
+				case 33:
+					ASM_bDone = true;
+					
+				default:
+					break;					
+			
+			}
+		
+		}
+		
+		Render();
+	}
+	
+	Uninitialize();
+	return(0);
+	
+	
+
+}
+
+void CreateWindow()
+{
+	void Uninitialize();
+	
+	XSetWindowAttributes ASM_WinAttr;
+	GLXFBConfig *ASM_pGLXFBConfig = NULL;
+	GLXFBConfig ASM_bestGLXFBConfig;
+	XVisualInfo * ASM_pTempXVisualInfo;
+	int ASM_numFBConfigs = 0;
+	int ASM_defaultScreen;
+	int ASM_styleMask;
+	
+	static int ASM_FrameBufferAttributes[] = 
+						{ GLX_DOUBLEBUFFER, True,
+						  GLX_X_RENDERABLE, True,
+						  GLX_DRAWABLE_TYPE, GLX_WINDOW_BIT,
+						  GLX_RENDER_TYPE, GLX_RGBA_BIT,
+						  GLX_X_VISUAL_TYPE, GLX_TRUE_COLOR,
+						  GLX_RED_SIZE, 8,
+						  GLX_GREEN_SIZE, 8,
+						  GLX_BLUE_SIZE, 8,
+						  GLX_ALPHA_SIZE, 8,
+						  GLX_STENCIL_SIZE, 8,
+						  GLX_DEPTH_SIZE, 24,
+						  None						
+						};
+						
+	ASM_gpDisplay = XOpenDisplay(NULL);
+	
+	if(ASM_gpDisplay == NULL)
+	{
+		fprintf(ASM_gpFile,"ERROR: Unable To Open X Display...Exit \n");
+		Uninitialize();
+		exit(1);
+	}
+	
+	ASM_defaultScreen = XDefaultScreen(ASM_gpDisplay);
+	
+	//ASM_gpVisualInfo = glXChooseVisual(ASM_gpDisplay, ASM_defaultScreen, ASM_FrameBufferAttributes);
+	
+	ASM_pGLXFBConfig = glXChooseFBConfig(ASM_gpDisplay, ASM_defaultScreen, ASM_FrameBufferAttributes, &ASM_numFBConfigs);
+	
+	fprintf(ASM_gpFile, " -------------------------------- FBConfig--------------------------------------\n\n");
+	
+	fprintf(ASM_gpFile,"Found Number of FBConfig :   %d\n\n",ASM_numFBConfigs);
+	
+	int ASM_bestFrameBufferConfig = -1;
+	int ASM_worstFrameBufferConfig = -1;
+	int ASM_bestNumberOfSamples = -1;
+	int ASM_worstNumberOfSamples = 999;
+	
+	for(int i = 0; i < ASM_numFBConfigs; i++)
+	{
+		
+		ASM_pTempXVisualInfo = glXGetVisualFromFBConfig(ASM_gpDisplay, ASM_pGLXFBConfig[i]);
+		
+		if(ASM_pTempXVisualInfo != NULL)
+		{
+			int ASM_sampleBuffers, ASM_samples;
+			
+			glXGetFBConfigAttrib(ASM_gpDisplay, ASM_pGLXFBConfig[i], GLX_SAMPLE_BUFFERS, &ASM_sampleBuffers);
+			glXGetFBConfigAttrib(ASM_gpDisplay, ASM_pGLXFBConfig[i], GLX_SAMPLES, &ASM_samples);
+			
+			if(ASM_bestFrameBufferConfig < 0 || ASM_sampleBuffers && ASM_samples > ASM_bestNumberOfSamples)
+			{
+				ASM_bestFrameBufferConfig = i;
+				ASM_bestNumberOfSamples = ASM_samples;
+			}
+			
+			if(ASM_worstFrameBufferConfig < 0 || !ASM_sampleBuffers || ASM_samples < ASM_worstNumberOfSamples)
+			{
+				ASM_worstFrameBufferConfig = i;
+				ASM_worstNumberOfSamples = ASM_samples;
+			}
+			
+			
+			fprintf(ASM_gpFile,"When i = %d , samples = %d , sample Buffers = %d,  ASM_pTempXVisualInfo Id = %ld\n", i, ASM_samples, ASM_sampleBuffers, ASM_pTempXVisualInfo->visualid);
+			
+		}
+		
+		XFree(ASM_pTempXVisualInfo);
+	
+	}
+	fprintf(ASM_gpFile, " ------------------------------------------------------------------------------------------------\n");
+	
+	ASM_bestGLXFBConfig = ASM_pGLXFBConfig[ASM_bestFrameBufferConfig];
+	ASM_gGLXFBConfig = ASM_bestGLXFBConfig;
+	
+	XFree(ASM_pGLXFBConfig);
+	
+	ASM_gpVisualInfo = glXGetVisualFromFBConfig(ASM_gpDisplay, ASM_gGLXFBConfig);
+	
+	ASM_WinAttr.border_pixel = 0;
+	ASM_WinAttr.background_pixmap = 0;
+	ASM_WinAttr.colormap = XCreateColormap(ASM_gpDisplay, RootWindow(ASM_gpDisplay, ASM_gpVisualInfo->screen), ASM_gpVisualInfo->visual, AllocNone);
+	
+	ASM_gColormap = ASM_WinAttr.colormap;
+	
+	ASM_WinAttr.background_pixel = BlackPixel(ASM_gpDisplay, ASM_defaultScreen);
+	ASM_WinAttr.event_mask = ExposureMask | VisibilityChangeMask | ButtonPressMask | KeyPressMask | PointerMotionMask | StructureNotifyMask;
+	
+	ASM_styleMask = CWBorderPixel | CWBackPixel | CWEventMask | CWColormap;
+	
+	ASM_gWindow = XCreateWindow (
+					ASM_gpDisplay,
+					RootWindow(ASM_gpDisplay, ASM_gpVisualInfo->screen),
+					0,
+					0,
+					ASM_gWindowWidth,
+					ASM_giWindowHeight,
+					0,
+					ASM_gpVisualInfo->depth,
+					InputOutput,
+					ASM_gpVisualInfo->visual,
+					ASM_styleMask,
+					&ASM_WinAttr	
+					);
+	
+	if(!ASM_gWindow)
+	{
+		fprintf(ASM_gpFile,"ERROR: Failed to Create Main Window\n");
+		Uninitialize();
+		exit(1);	
+	}
+	
+	XStoreName(ASM_gpDisplay, ASM_gWindow, "3D Shapes Texture");
+	
+	Atom ASM_windowManagerDelete = XInternAtom(ASM_gpDisplay, "WM_DELETE_WINDOW", True);
+	XSetWMProtocols(ASM_gpDisplay, ASM_gWindow, &ASM_windowManagerDelete, 1);
+	
+	XMapWindow(ASM_gpDisplay, ASM_gWindow);	
+	
+		
+}
+
+
+void ToggleFullScreen()
+{
+	
+	Atom ASM_wm_state;
+	Atom ASM_fullscreen;
+	XEvent ASM_xev = {0};
+	
+	ASM_wm_state = XInternAtom(ASM_gpDisplay, "_NET_WM_STATE", False);
+	memset(&ASM_xev, 0 , sizeof(ASM_xev));
+	
+	ASM_xev.type = ClientMessage;
+	ASM_xev.xclient.window = ASM_gWindow;
+	ASM_xev.xclient.message_type = ASM_wm_state;
+	ASM_xev.xclient.format = 32;
+	ASM_xev.xclient.data.l[0]= ASM_bFullScreen ? 0:1;
+	
+	ASM_fullscreen = XInternAtom(ASM_gpDisplay, "_NET_WM_STATE_FULLSCREEN", False);
+	ASM_xev.xclient.data.l[1] = ASM_fullscreen;
+	
+	XSendEvent(ASM_gpDisplay, RootWindow(ASM_gpDisplay, ASM_gpVisualInfo->screen), False,StructureNotifyMask,&ASM_xev);
+
+}
+
+void Initialize(){
+
+	void Resize(int, int);
+	void Uninitialize();
+	GLuint loadBitmapAsTexture(const char*);
+	
+	ASM_glXCreateContextAttribsARB = (glXCreateContextAttribsARBProc)glXGetProcAddressARB((GLubyte*)"glXCreateContextAttribsARB");
+	
+	int ASM_attribs[] = { GLX_CONTEXT_MAJOR_VERSION_ARB, 4, 
+				    GLX_CONTEXT_MINOR_VERSION_ARB, 5,
+				    GLX_CONTEXT_PROFILE_MASK_ARB, GLX_CONTEXT_CORE_PROFILE_BIT_ARB,
+				    None };
+	
+	ASM_gGLXContext = ASM_glXCreateContextAttribsARB(ASM_gpDisplay, ASM_gGLXFBConfig, 0, True,  ASM_attribs);
+	
+	if(!ASM_gGLXContext)
+	{
+	
+		int ASM_attribs[] = { GLX_CONTEXT_MAJOR_VERSION_ARB, 1, 
+				  GLX_CONTEXT_MINOR_VERSION_ARB, 0,
+				  None };
+				  
+		ASM_gGLXContext = ASM_glXCreateContextAttribsARB(ASM_gpDisplay, ASM_gGLXFBConfig, 0, True,  ASM_attribs);
+	
+	}		
+	
+	Bool ASM_bIsDirectContext;
+	
+	ASM_bIsDirectContext = glXIsDirect(ASM_gpDisplay, ASM_gGLXContext);
+	
+	fprintf(ASM_gpFile,"\n\n--------------------------- Context Details -------------------------------\n\n");
+	if(ASM_bIsDirectContext = True)
+	{
+		fprintf(ASM_gpFile,"Rendering Context is Direct Hardware Rendering Context\n\n");
+	
+	}
+	else
+	{
+		fprintf(ASM_gpFile,"Rendering Context is not Direct Hardware Rendering Context but Software Renderig Context\n\n");
+	}
+	fprintf(ASM_gpFile, " ------------------------------------------------------------------------------------------------\n");
+	
+	glXMakeCurrent(ASM_gpDisplay, ASM_gWindow, ASM_gGLXContext);
+	
+	GLenum ASM_glew_error = glewInit();
+
+	if (ASM_glew_error != GLEW_OK)
+	{
+		fprintf(ASM_gpFile, "glewInit(): Failed !!!!!\n");
+		Uninitialize();
+		exit(1);
+
+	}	
+	
+	// Graphic Library Shading Language
+	///// OpenGL Related Log
+	fprintf(ASM_gpFile, "\n------------------- OpenGL Related Log ---------------------\n\n");
+	fprintf(ASM_gpFile, "OpenGL Vendor : %s\n\n", glGetString(GL_VENDOR));
+	fprintf(ASM_gpFile, "OpenGL Renderer : %s\n\n", glGetString(GL_RENDERER));
+	fprintf(ASM_gpFile, "OpenGL Version : %s\n\n", glGetString(GL_VERSION));
+	fprintf(ASM_gpFile, "GLSL Version : %s\n\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
+
+	//OpenGL Enabled Extension
+	fprintf(ASM_gpFile, "\n------------------- OpenGL Enabled Extension ---------------------\n\n");
+	fflush(ASM_gpFile);
+	GLint ASM_numExt;
+
+	glGetIntegerv(GL_NUM_EXTENSIONS, &ASM_numExt);
+
+	for (int ASM_i = 0; ASM_i < ASM_numExt; ASM_i++)
+	{
+		fprintf(ASM_gpFile, "%s\n", glGetStringi(GL_EXTENSIONS, ASM_i));
+		fflush(ASM_gpFile);
+	}
+
+	fprintf(ASM_gpFile, "\n\n------------------------------------------------------\n\n");
+	
+	
+	////-----------------------------Vertex Shader
+
+	//Create Shader
+	ASM_vertexShaderObject = glCreateShader(GL_VERTEX_SHADER);
+
+	//provide source code
+
+	const GLchar *ASM_vertexShaderSourceCode = 
+		"#version 450 core" \
+		"\n" \
+		"in vec2 ASM_vPosition;" \
+		"void main(void)" \
+		"{" \
+			"gl_Position = vec4(ASM_vPosition, 0.0f, 1.0f);" \
+		"}";
+
+	glShaderSource(ASM_vertexShaderObject, 1, (const GLchar **)&ASM_vertexShaderSourceCode, NULL);
+
+		//compile Shader
+	glCompileShader(ASM_vertexShaderObject);
+
+	GLint ASM_iInfoLogLength = 0;
+	GLint ASM_iShaderCompliedStatus = 0;
+	char* ASM_szInfoLog = NULL;
+
+	glGetShaderiv(ASM_vertexShaderObject, GL_COMPILE_STATUS, &ASM_iShaderCompliedStatus);
+	
+	if (ASM_iShaderCompliedStatus == GL_FALSE)
+	{
+		glGetShaderiv(ASM_vertexShaderObject, GL_INFO_LOG_LENGTH, &ASM_iInfoLogLength);
+
+		if (ASM_iInfoLogLength > 0)
+		{
+			ASM_szInfoLog = (char*)malloc(sizeof(char)* ASM_iInfoLogLength);
+			if (ASM_szInfoLog != NULL)
+			{
+				GLsizei ASM_written;
+				glGetShaderInfoLog(ASM_vertexShaderObject, ASM_iInfoLogLength, &ASM_written, ASM_szInfoLog);
+				fprintf(ASM_gpFile, "Vertex Shader Compilation Log : %s\n", ASM_szInfoLog);
+				free(ASM_szInfoLog);
+				Uninitialize();
+				exit(1);
+			}
+
+		}
+
+	}
+
+	////-----------------------------Tesselation Control Shader
+
+	//Create Shader
+	ASM_tesselationControlShaderObject = glCreateShader(GL_TESS_CONTROL_SHADER);
+
+	//provide source code
+
+	const GLchar *ASM_tesselationControlSourceCode = 
+		"#version 450 core" \
+		"\n" \
+		"layout(vertices = 4) out;"\
+		"uniform int numberOfSegments;"\
+		"uniform int numbetOfStrips;"\
+		"void main(void)" \
+		"{" \
+			"gl_out[gl_InvocationID].gl_Position = gl_in[gl_InvocationID].gl_Position;"\
+			"gl_TessLevelOuter[0] = float(numbetOfStrips);"\
+			"gl_TessLevelOuter[1] = float(numberOfSegments);"\
+		"}";
+
+	glShaderSource(ASM_tesselationControlShaderObject, 1, (const GLchar **)&ASM_tesselationControlSourceCode, NULL);
+
+		//compile Shader
+	glCompileShader(ASM_tesselationControlShaderObject);
+
+	ASM_iInfoLogLength = 0;
+	ASM_iShaderCompliedStatus = 0;
+	ASM_szInfoLog = NULL;
+
+	glGetShaderiv(ASM_tesselationControlShaderObject, GL_COMPILE_STATUS, &ASM_iShaderCompliedStatus);
+	
+	if (ASM_iShaderCompliedStatus == GL_FALSE)
+	{
+		glGetShaderiv(ASM_tesselationControlShaderObject, GL_INFO_LOG_LENGTH, &ASM_iInfoLogLength);
+
+		if (ASM_iInfoLogLength > 0)
+		{
+			ASM_szInfoLog = (char*)malloc(sizeof(char)* ASM_iInfoLogLength);
+			if (ASM_szInfoLog != NULL)
+			{
+				GLsizei ASM_written;
+				glGetShaderInfoLog(ASM_tesselationControlShaderObject, ASM_iInfoLogLength, &ASM_written, ASM_szInfoLog);
+				fprintf(ASM_gpFile, "Tesselation Control Shader Compilation Log : %s\n", ASM_szInfoLog);
+				free(ASM_szInfoLog);
+				Uninitialize();
+				exit(1);
+			}
+
+		}
+
+	}
+
+	////-----------------------------Tesselation Evaluation Shader
+
+	//Create Shader
+	ASM_tesselationEvaluationShaderObject = glCreateShader(GL_TESS_EVALUATION_SHADER);
+
+	//provide source code
+
+	const GLchar *ASM_tesselationEvaluationSourceCode = 
+		"#version 450 core" \
+		"\n" \
+		"layout(isolines) in;"\
+		"uniform mat4 u_mvpMatrix;"
+		"void main(void)" \
+		"{" \
+			"float tessCoord = gl_TessCoord.x;"\
+			"vec3 p0 = gl_in[0].gl_Position.xyz;"\
+			"vec3 p1 = gl_in[1].gl_Position.xyz;"\
+			"vec3 p2 = gl_in[2].gl_Position.xyz;"\
+			"vec3 p3 = gl_in[3].gl_Position.xyz;"\
+			"vec3 p = p0*(1.0 - tessCoord)*(1.0 - tessCoord)*(1.0 - tessCoord) + p1*3.0*(tessCoord)*(1.0 - tessCoord)*(1.0 - tessCoord) + p2*3.0*(tessCoord)*(tessCoord)*(1.0 - tessCoord) +  p3*(tessCoord)*(tessCoord)*(tessCoord);"
+			"gl_Position =u_mvpMatrix * vec4(p, 1.0f);"\
+		"}";
+
+	glShaderSource(ASM_tesselationEvaluationShaderObject, 1, (const GLchar **)&ASM_tesselationEvaluationSourceCode, NULL);
+
+		//compile Shader
+	glCompileShader(ASM_tesselationEvaluationShaderObject);
+
+	ASM_iInfoLogLength = 0;
+	ASM_iShaderCompliedStatus = 0;
+	ASM_szInfoLog = NULL;
+
+	glGetShaderiv(ASM_tesselationEvaluationShaderObject, GL_COMPILE_STATUS, &ASM_iShaderCompliedStatus);
+	
+	if (ASM_iShaderCompliedStatus == GL_FALSE)
+	{
+		glGetShaderiv(ASM_tesselationEvaluationShaderObject, GL_INFO_LOG_LENGTH, &ASM_iInfoLogLength);
+
+		if (ASM_iInfoLogLength > 0)
+		{
+			ASM_szInfoLog = (char*)malloc(sizeof(char)* ASM_iInfoLogLength);
+			if (ASM_szInfoLog != NULL)
+			{
+				GLsizei ASM_written;
+				glGetShaderInfoLog(ASM_tesselationEvaluationShaderObject, ASM_iInfoLogLength, &ASM_written, ASM_szInfoLog);
+				fprintf(ASM_gpFile, "Tesselation Evaluation Shader Compilation Log : %s\n", ASM_szInfoLog);
+				free(ASM_szInfoLog);
+				Uninitialize();
+				exit(1);
+			}
+
+		}
+
+	}
+
+	////-----------------------------Fragment Shader
+
+	ASM_fragmentShaderObject = glCreateShader(GL_FRAGMENT_SHADER);
+
+	const GLchar *ASM_fragmentShaderSourceCode = 
+		"#version 450 core" \
+		"\n" \
+		"out vec4 ASM_fragColor;" \
+		"uniform vec4 lineColor;"\
+		"void main(void)" \
+		"{" \
+			"ASM_fragColor = lineColor;" \
+		"}";
+
+
+	glShaderSource(ASM_fragmentShaderObject, 1, (const GLchar **)&ASM_fragmentShaderSourceCode,NULL);
+
+	glCompileShader(ASM_fragmentShaderObject);
+
+	ASM_iInfoLogLength = 0;
+	ASM_iShaderCompliedStatus = 0;
+	ASM_szInfoLog = NULL;
+
+	glGetShaderiv(ASM_fragmentShaderObject, GL_COMPILE_STATUS, &ASM_iShaderCompliedStatus);
+
+	if (ASM_iShaderCompliedStatus == GL_FALSE)
+	{
+		glGetShaderiv(ASM_fragmentShaderObject, GL_INFO_LOG_LENGTH, &ASM_iInfoLogLength);
+
+		if (ASM_iInfoLogLength > 0)
+		{
+			ASM_szInfoLog = (char*)malloc(sizeof(char) * ASM_iInfoLogLength);
+			if (ASM_szInfoLog != NULL)
+			{
+				GLsizei ASM_written;
+				glGetShaderInfoLog(ASM_fragmentShaderObject, ASM_iInfoLogLength, &ASM_written, ASM_szInfoLog);
+				fprintf(ASM_gpFile, "Fragment Shader Compilation Log : %s\n", ASM_szInfoLog);
+				free(ASM_szInfoLog);
+				Uninitialize();
+				exit(1);
+			}
+
+		}
+
+	}
+
+	// -------------------------- Shader Program
+
+	ASM_shaderProgramObject = glCreateProgram();
+
+	glAttachShader(ASM_shaderProgramObject, ASM_vertexShaderObject);
+
+	glAttachShader(ASM_shaderProgramObject, ASM_fragmentShaderObject);
+
+	glAttachShader(ASM_shaderProgramObject, ASM_tesselationControlShaderObject);
+
+	glAttachShader(ASM_shaderProgramObject, ASM_tesselationEvaluationShaderObject);
+
+	glBindAttribLocation(ASM_shaderProgramObject, ASM_ATTRIBUTE_POSITION, "ASM_vPosition");
+
+	glLinkProgram(ASM_shaderProgramObject);
+
+	ASM_iInfoLogLength = 0;
+	ASM_szInfoLog = NULL;
+	GLint ASM_iShaderProgramLinkStatus = 0;
+
+	glGetShaderiv(ASM_shaderProgramObject, GL_LINK_STATUS, &ASM_iShaderProgramLinkStatus);
+
+	if (ASM_iShaderProgramLinkStatus == GL_FALSE)
+	{
+		glGetShaderiv(ASM_shaderProgramObject, GL_INFO_LOG_LENGTH, &ASM_iInfoLogLength);
+
+		if (ASM_iInfoLogLength > 0)
+		{
+			ASM_szInfoLog = (char*)malloc(sizeof(char) * ASM_iInfoLogLength);
+			if (ASM_szInfoLog != NULL)
+			{
+				GLsizei ASM_written;
+				glGetShaderInfoLog(ASM_shaderProgramObject, ASM_iInfoLogLength, &ASM_written, ASM_szInfoLog);
+				fprintf(ASM_gpFile, "Shader Program Link Log : %s\n", ASM_szInfoLog);
+				free(ASM_szInfoLog);
+				Uninitialize();
+				exit(1);
+			}
+
+		}
+
+	}
+
+	ASM_mvpUniform = glGetUniformLocation(ASM_shaderProgramObject, "u_mvpMatrix");
+	ASM_numberOfSegmentsUniform = glGetUniformLocation(ASM_shaderProgramObject, "numberOfSegments");
+	ASM_numberOfStripsUniform = glGetUniformLocation(ASM_shaderProgramObject, "numbetOfStrips");
+	ASM_lineColorUniform = glGetUniformLocation(ASM_shaderProgramObject, "lineColor");
+
+
+	const GLfloat ASM_vertices[] =
+	{
+		-1.0f, -1.0f, -0.5f, 1.0f, 0.5f, -1.0f, 1.0f, 1.0f
+	};
+
+	glGenVertexArrays(1, &ASM_vao);
+	glBindVertexArray(ASM_vao);
+
+		glGenBuffers(1, &ASM_vbo);
+		glBindBuffer(GL_ARRAY_BUFFER, ASM_vbo);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(ASM_vertices), ASM_vertices, GL_STATIC_DRAW);
+		
+		glVertexAttribPointer(ASM_ATTRIBUTE_POSITION, 2, GL_FLOAT, GL_FALSE, 0, NULL);
+
+		glEnableVertexAttribArray(ASM_ATTRIBUTE_POSITION);
+
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindVertexArray(0);
+
+
+	ASM_perspectiveProjectionMatrix = mat4::identity();
+
+	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+	ASM_uiNumberOfSegmentObject = 1;
+
+	glClearDepth(1.0f);
+	glEnable(GL_DEPTH_TEST);
+	glDepthFunc(GL_LEQUAL);
+			
+	Resize(ASM_gWindowWidth, ASM_giWindowHeight);
+	
+
+}
+
+
+void Resize(int width, int height){
+
+	if(height <= 0)
+		height = 1;
+		
+	glViewport(0, 0, (GLsizei)width, (GLsizei)height);	
+
+	ASM_perspectiveProjectionMatrix = perspective(45.0f, (GLfloat)width/ (GLfloat)height, 0.1f, 100.0f);
+	
+	
+}
+void Render(){
+
+	//code
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	glUseProgram(ASM_shaderProgramObject);
+
+		mat4 ASM_modelViewMatrix = mat4::identity();
+		mat4 ASM_modelViewProjectMatrix = mat4::identity();
+		mat4 ASM_translateMatrix = mat4::identity();
+
+		ASM_translateMatrix = translate(0.0f, 0.0f, -4.0f);
+
+		ASM_modelViewMatrix = ASM_translateMatrix;
+
+		ASM_modelViewProjectMatrix = ASM_perspectiveProjectionMatrix * ASM_modelViewMatrix;
+
+		
+		glUniformMatrix4fv(ASM_mvpUniform, 1, GL_FALSE, ASM_modelViewProjectMatrix);
+		glUniform1i(ASM_numberOfSegmentsUniform, ASM_uiNumberOfSegmentObject);
+		glUniform1i(ASM_numberOfStripsUniform, 1);
+		glUniform4fv(ASM_lineColorUniform, 1, vec4(1.0f, 1.0f, 0.0f, 1.0f));
+
+		glBindVertexArray(ASM_vao);
+
+			glPatchParameteri(GL_PATCH_VERTICES, 4);
+			glDrawArrays(GL_PATCHES, 0, 4);
+
+		glBindVertexArray(0);
+
+
+	glUseProgram(0);	
+		
+	glXSwapBuffers(ASM_gpDisplay, ASM_gWindow);
+
+}
+
+void Uninitialize(){
+
+	GLXContext ASM_currentGLXContext;
+	ASM_currentGLXContext = glXGetCurrentContext();
+	
+	////--------------------------------- Safe Shader Cleanup
+	if(ASM_shaderProgramObject)
+	{
+
+		glUseProgram(ASM_shaderProgramObject);
+
+		GLsizei ASM_shaderCount;
+
+		glGetProgramiv(ASM_shaderProgramObject, GL_ATTACHED_SHADERS, &ASM_shaderCount);
+
+		GLuint * ASM_pShaders = NULL;
+
+		ASM_pShaders = (GLuint *)malloc(ASM_shaderCount*sizeof(GLuint));
+
+		if(ASM_pShaders == NULL)
+		{
+			fprintf(ASM_gpFile, "Memory Allocation Failed !!!!!\n");
+			exit(0);
+
+		}
+
+		glGetAttachedShaders(ASM_shaderProgramObject, ASM_shaderCount,&ASM_shaderCount, ASM_pShaders);
+
+		for(GLsizei ASM_i = 0; ASM_i < ASM_shaderCount; ASM_i++)
+		{
+
+			glDetachShader(ASM_shaderProgramObject, ASM_pShaders[ASM_i]);
+			glDeleteShader(ASM_pShaders[ASM_i]);
+			ASM_pShaders[ASM_i] = 0;
+
+		}
+
+		free(ASM_pShaders);
+		ASM_pShaders = NULL;
+
+		glDeleteProgram(ASM_shaderProgramObject);
+		ASM_shaderProgramObject = 0;
+
+		glUseProgram(0);
+
+	}
+
+	if (ASM_vao)
+	{
+		glDeleteVertexArrays(1, &ASM_vao);
+		ASM_vao = 0;
+	}
+
+	if (ASM_vbo)
+	{
+		glDeleteBuffers(1, &ASM_vbo);
+		ASM_vbo = 0;
+	}
+
+		
+	if(ASM_currentGLXContext == ASM_gGLXContext)
+	{
+		glXGetCurrentContext();
+	}
+	if(ASM_gGLXContext)
+	{
+		glXDestroyContext(ASM_gpDisplay,ASM_gGLXContext);
+	}
+	
+	if(ASM_gWindow)
+	{
+		XDestroyWindow(ASM_gpDisplay,ASM_gWindow);
+	}
+	
+	if(ASM_gColormap)
+	{
+		XFreeColormap(ASM_gpDisplay,ASM_gColormap);
+	}
+	
+	if(ASM_gpVisualInfo)
+	{
+		free(ASM_gpVisualInfo);
+		ASM_gpVisualInfo = NULL;
+	}
+	
+	if(ASM_gpDisplay)
+	{
+		XCloseDisplay(ASM_gpDisplay);
+		ASM_gpDisplay = NULL;
+	}
+	
+	if(ASM_gpFile != NULL)
+	{
+		fprintf(ASM_gpFile, "Program Execution Ended Succesfully\n");
+		
+		fclose(ASM_gpFile);
+		ASM_gpFile =NULL;
+			
+	}	
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
