@@ -1,0 +1,33 @@
+Program Execution Started Succesfully
+
+ -------------------------------- FBConfig--------------------------------------
+
+Found Number of FBConfig :   18
+
+When i = 0 , samples = 0 , sample Buffers = 0,  ASM_pTempXVisualInfo Id = 33
+When i = 1 , samples = 0 , sample Buffers = 0,  ASM_pTempXVisualInfo Id = 412
+When i = 2 , samples = 0 , sample Buffers = 0,  ASM_pTempXVisualInfo Id = 418
+When i = 3 , samples = 0 , sample Buffers = 0,  ASM_pTempXVisualInfo Id = 422
+When i = 4 , samples = 2 , sample Buffers = 1,  ASM_pTempXVisualInfo Id = 430
+When i = 5 , samples = 2 , sample Buffers = 1,  ASM_pTempXVisualInfo Id = 446
+When i = 6 , samples = 4 , sample Buffers = 1,  ASM_pTempXVisualInfo Id = 431
+When i = 7 , samples = 4 , sample Buffers = 1,  ASM_pTempXVisualInfo Id = 447
+When i = 8 , samples = 8 , sample Buffers = 1,  ASM_pTempXVisualInfo Id = 432
+When i = 9 , samples = 8 , sample Buffers = 1,  ASM_pTempXVisualInfo Id = 448
+When i = 10 , samples = 16 , sample Buffers = 1,  ASM_pTempXVisualInfo Id = 433
+When i = 11 , samples = 16 , sample Buffers = 1,  ASM_pTempXVisualInfo Id = 449
+When i = 12 , samples = 0 , sample Buffers = 0,  ASM_pTempXVisualInfo Id = 419
+When i = 13 , samples = 0 , sample Buffers = 0,  ASM_pTempXVisualInfo Id = 423
+When i = 14 , samples = 0 , sample Buffers = 0,  ASM_pTempXVisualInfo Id = 248
+When i = 15 , samples = 0 , sample Buffers = 0,  ASM_pTempXVisualInfo Id = 518
+When i = 16 , samples = 0 , sample Buffers = 0,  ASM_pTempXVisualInfo Id = 520
+When i = 17 , samples = 0 , sample Buffers = 0,  ASM_pTempXVisualInfo Id = 521
+ ------------------------------------------------------------------------------------------------
+
+
+--------------------------- Context Details -------------------------------
+
+Rendering Context is Direct Hardware Rendering Context
+
+ ------------------------------------------------------------------------------------------------
+Program Execution Ended Succesfully
